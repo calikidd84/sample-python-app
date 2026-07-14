@@ -3,50 +3,24 @@
 AI code review step for the CSE636 Week 2 lab.
 Reads recently changed Python files and asks an OpenRouter model for a code review.
 """
+import json
 import os
 import ssl
 import subprocess
-import certifi
-import httpx  # Used directly to build the client
-from openai import OpenAI  # OpenRouter uses the OpenAI-compatible client structure
+import urllib.request
 
 # Read the newly configured OpenRouter environment variable
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
-# TLS trust behind an inspecting proxy (e.g. Zscaler). The SDK verifies
-# via httpx against certifi's bundle — NOT the OS store. Build the SSL context
-# explicitly from a bundle that includes the corporate root CA (SSL_CERT_FILE /
-# REQUESTS_CA_BUNDLE, else certifi's default), then clear VERIFY_X509_STRICT:
-# Python 3.13 turns on strict RFC 5280 verification by default, and many corporate
-# CAs (Zscaler) ship a CA cert whose basicConstraints isn't marked critical, which
-# strict mode rejects ("Basic Constraints of CA cert not marked critical"). We
-# still require a valid cert, full chain, and hostname match — only the
-# over-strict RFC check is relaxed.
-_ca_bundle = (os.environ.get("SSL_CERT_FILE")
-              or os.environ.get("REQUESTS_CA_BUNDLE")
-              or certifi.where())
-_ssl_ctx = ssl.create_default_context(cafile=_ca_bundle)
+# TLS trust behind an inspecting proxy (e.g. Zscaler).
+# Python 3.13 turns on strict RFC 5280 verification by default. We clear
+# VERIFY_X509_STRICT to handle corporate CAs whose basicConstraints aren't critical.
+_ssl_ctx = ssl.create_default_context()
 _ssl_ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-
-# Initialize the OpenAI client with OpenRouter's endpoint and custom headers
-client = OpenAI(
-    base_url="https://openrouter.ai",
-    api_key=OPENROUTER_API_KEY,
-    http_client=httpx.Client(verify=_ssl_ctx),
-    default_headers={
-        "HTTP-Referer": "https://jenkins.local",  # Optional, for OpenRouter analytics
-        "X-Title": "Jenkins AI Code Review Pipeline"  # Optional, for OpenRouter analytics
-    }
-)
 
 
 def get_changed_files():
-    """Python files changed in the last commit; fall back to all tracked .py files.
-
-    The diff is empty when the last commit touched no .py file, the repo has a
-    single commit (no HEAD~1), or Jenkins did a shallow clone. In those cases we
-    review every tracked .py file so the stage always produces output.
-    """
+    """Python files changed in the last commit; fall back to all tracked .py files."""
     diff = subprocess.run(
         ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
         capture_output=True, text=True
@@ -75,12 +49,20 @@ def read_file(path):
 
 
 def review_code(filename, content):
-    """Ask OpenRouter to review a single file."""
-    # Use OpenAI's chat completion format and specify an OpenRouter model string
-    response = client.chat.completions.create(
-        model="anthropic/claude-3.5-sonnet",  # OpenRouter model syntax
-        max_tokens=1024,
-        messages=[
+    """Ask OpenRouter to review a single file using pure urllib."""
+    url = "https://openrouter.ai"
+    
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://jenkins.local",
+        "X-Title": "Jenkins AI Code Review Pipeline"
+    }
+    
+    data = {
+        "model": "anthropic/claude-3.5-sonnet",
+        "max_tokens": 1024,
+        "messages": [
             {
                 "role": "user",
                 "content": (
@@ -91,8 +73,21 @@ def review_code(filename, content):
                 )
             }
         ]
+    }
+    
+    req = urllib.request.Request(
+        url, 
+        data=json.dumps(data).encode("utf-8"), 
+        headers=headers, 
+        method="POST"
     )
-    return response.choices.message.content or ""
+    
+    try:
+        with urllib.request.urlopen(req, context=_ssl_ctx) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            return res_data["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"Error during AI code review api call: {str(e)}"
 
 
 def main():
