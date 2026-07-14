@@ -34,10 +34,11 @@ client = OpenAI(
     api_key=OPENROUTER_API_KEY,
     http_client=httpx.Client(verify=_ssl_ctx),
     default_headers={
-        "HTTP-Referer": "https://jenkins.local", # Optional, for OpenRouter analytics
-        "X-Title": "Jenkins AI Code Review Pipeline" # Optional, for OpenRouter analytics
+        "HTTP-Referer": "https://jenkins.local",  # Optional, for OpenRouter analytics
+        "X-Title": "Jenkins AI Code Review Pipeline"  # Optional, for OpenRouter analytics
     }
 )
+
 
 def get_changed_files():
     """Python files changed in the last commit; fall back to all tracked .py files.
@@ -64,6 +65,7 @@ def get_changed_files():
     )
     return [f for f in listed.stdout.strip().split("\n") if f.endswith(".py")]
 
+
 def read_file(path):
     try:
         with open(path) as fh:
@@ -71,11 +73,12 @@ def read_file(path):
     except FileNotFoundError:
         return None
 
+
 def review_code(filename, content):
     """Ask OpenRouter to review a single file."""
     # Use OpenAI's chat completion format and specify an OpenRouter model string
     response = client.chat.completions.create(
-        model="anthropic/claude-3.5-sonnet", # OpenRouter model syntax
+        model="anthropic/claude-3.5-sonnet",  # OpenRouter model syntax
         max_tokens=1024,
         messages=[
             {
@@ -89,7 +92,8 @@ def review_code(filename, content):
             }
         ]
     )
-    return response.choices[0].message.content
+    return response.choices.message.content or ""
+
 
 def main():
     changed = get_changed_files()
@@ -112,6 +116,7 @@ def main():
     with open("ai_review_report.txt", "w") as fh:
         fh.write("\n".join(report_lines))
     print("AI review complete. Report saved to ai_review_report.txt")
+
 
 if __name__ == "__main__":
     main()
