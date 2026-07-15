@@ -50,7 +50,7 @@ def read_file(path):
 
 def review_code(filename, content):
     """Ask OpenRouter to review a single file using pure urllib."""
-    url = "https://openrouter.ai"
+    url = "https://openrouter.ai/api/v1/chat/completions"
     
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
