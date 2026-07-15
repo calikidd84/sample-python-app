@@ -62,7 +62,7 @@ def review_code(filename, content):
     }
 
     data = {
-        "model": "anthropic/claude-3.5-sonnet",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
         "max_tokens": 1024,
         "messages": [
             {
